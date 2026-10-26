@@ -173,6 +173,6 @@ docs/                Protocol and de-identified verification summary
 
 ## Privacy, publication, and license
 
-This repository contains only implementation, tests, and de-identified documentation—not authentication state, personal configuration, raw conversations, real execution IDs, machine-specific paths, or test logs. The repository is currently private; making it public requires a separate, explicit decision by the owner. Source visibility and licensing are separate decisions.
+This repository contains only implementation, tests, and de-identified documentation—not authentication state, personal configuration, raw conversations, real execution IDs, machine-specific paths, or test logs. Public publication has been explicitly authorized by the owner. Runtime state, authentication files, and real execution logs must still remain private. Source visibility and licensing are separate decisions.
 
 This project is licensed under the [MIT License](LICENSE). Copyright (c) claude-copilot-supervisor contributors. Dependencies retain their respective licenses. This project is not published to npm.

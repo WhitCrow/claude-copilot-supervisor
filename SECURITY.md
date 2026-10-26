@@ -42,7 +42,7 @@ These measures mitigate software lifecycle errors; they **do not replace OS isol
 
 ## Reporting problems
 
-The repository is currently private; any future public release requires a separate, explicit owner decision. Do not disclose unpatched vulnerabilities, sensitive logs, raw sessions, authentication files, or reports that have not been sanitized in public issues.
+The source repository may be public, but runtime state and sensitive reports must remain private. Do not disclose unpatched vulnerabilities, sensitive logs, raw sessions, authentication files, or reports that have not been sanitized in public issues.
 
 Use GitHub **Security → Report a vulnerability** only if private vulnerability reporting is enabled for this repository. This document does not assert that the feature is enabled. If it is unavailable, do not substitute a public issue for a private vulnerability report or assume that a private reporting channel exists. Use a repository-access-controlled channel only if one is actually available and authorized.
 
