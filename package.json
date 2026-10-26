@@ -1,0 +1,24 @@
+{
+  "name": "claude-copilot-supervisor",
+  "version": "0.1.0",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "description": "Local stdio MCP bridge for persistent Copilot sessions and one-time supervisor approvals",
+  "scripts": {
+    "start": "node src/server.mjs",
+    "check": "npm run check:syntax && npm test",
+    "check:syntax": "node scripts/check.mjs",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "test:live:copilot-files": "node scripts/copilot-live-probe.mjs",
+    "test:live:copilot-commands": "node scripts/copilot-command-live.mjs",
+    "test:live:claude-copilot": "node scripts/claude-copilot-live.mjs",
+    "test:live:claude-fixture": "node scripts/claude-smoke.mjs"
+  },
+  "engines": { "node": ">=22.13.0" },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "acpx": "0.21.0",
+    "zod": "4.6.7"
+  }
+}

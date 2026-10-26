@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "copilot-supervisor": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/absolute/path/to/claude-copilot-supervisor/src/server.mjs",
+        "--project-root",
+        "/absolute/path/to/empty-test-project",
+        "--state-dir",
+        "/absolute/path/to/private-session-state"
+      ]
+    }
+  }
+}

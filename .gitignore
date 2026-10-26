@@ -1,0 +1,16 @@
+node_modules/
+.state/
+reports/
+coverage/
+.env
+.env.*
+!.env.example
+.copilot/
+.claude/
+*.log
+*.pem
+*.key
+*.p12
+*.pfx
+mcp.local.json
+.DS_Store
