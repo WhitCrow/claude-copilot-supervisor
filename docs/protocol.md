@@ -1,58 +1,60 @@
-# 协议和生命周期
+# Protocol and lifecycle
 
-## 请求并非后台弹窗
+English | [简体中文](protocol.zh-CN.md)
 
-Copilot 用 ACP 提交 `session/request_permission`；嵌入式运行时的异步 `onPermissionRequest` 保持等待。本桥接把请求保存为内存条目，Claude 通过 MCP 查询，再通过独立的 decide 调用返回决定。
+## Requests are not background pop-ups
 
-`copilot_start` 返回 jobId 而不等待任务完成，避免“主管等执行结束、执行端等主管批准”的死锁。`copilot_status(waitMs=10000)` 最多短等十秒；一有待审批或终态立即返回，不持续阻塞审批。
+Copilot submits `session/request_permission` over ACP; the embedded runtime's asynchronous `onPermissionRequest` remains pending. This bridge stores the request as an in-memory entry. Claude queries it through MCP, then returns a decision through a separate decide call.
 
-## 状态
+`copilot_start` returns a jobId without waiting for task completion, avoiding a deadlock where the supervisor waits for execution to finish while the executor waits for approval. `copilot_status(waitMs=10000)` waits at most ten seconds and returns immediately on a pending approval or terminal state; it does not remain blocked in a way that prevents approval.
+
+## States
 
 ```text
-running ──请求权限──> waiting_approval
-   ↑                      │
-   └───── approve/deny ────┘
+running ──permission request──> waiting_approval
+   ↑                                │
+   └──────── approve/deny ───────────┘
    │
-   ├─ completed：Agent 轮次结束（不等于目标实现）
-   ├─ cancelled：请求取消并完成相应清理
-   └─ failed：任务、超时或清理失败，保留错误
+   ├─ completed: agent turn ended (not necessarily goal achieved)
+   ├─ cancelled: cancellation requested and corresponding cleanup completed
+   └─ failed: task, timeout, or cleanup failure; error retained
 ```
 
-一轮可以多次请求权限。拒绝可能使 Agent 放弃该操作或结束当前轮次。真实 Copilot 在拒绝后曾返回“Operation cancelled”并正常 end_turn，因此调用方必须检查结果与副作用，不能只看 completed。
+A single turn may request permission multiple times. Denial may cause the agent to abandon that operation or end the turn. Real Copilot has returned “Operation cancelled” after denial and still produced a normal `end_turn`, so callers must inspect results and side effects, not just `completed`.
 
-## 一次性决定
+## One-time decisions
 
-- public approvalId 使用随机 UUID，并绑定 jobId。
-- 内部保存请求快照，展示时返回副本，外部修改不能改变已保存请求。
-- approve 只选择确切的 allow_once optionId；没有这个选项时返回错误。
-- deny 选 reject_once，没有时取消请求；不退回长期拒绝选项。
-- 过期、重复、跨 job 的决定不会放行。
-- 期限用单调时钟判定，在决定入口重新检查；不能只信赖事件循环定时器。
+- Public approval IDs are random UUIDs bound to jobId.
+- A request snapshot is stored internally, and copies are returned for display; external mutation cannot change the stored request.
+- `approve` selects only the exact `allow_once` optionId; if that option is absent, it returns an error.
+- `deny` selects `reject_once`, or cancels the request if that option is absent; it does not fall back to a persistent rejection option.
+- Expired, duplicate, and cross-job decisions never authorize execution.
+- Expiry is determined using a monotonic clock and rechecked at the decision entry point; event-loop timers alone are not trusted.
 
-这些是桥接软件层的授权生命周期，不验证“模型所称的操作”与任意原生后端的执行字节一定一致。信任和隔离边界见 SECURITY.md。
+These rules manage the authorization lifecycle in the bridge's software layer. They do not verify that “the operation described by the model” necessarily matches the bytes executed by any arbitrary native backend. See [SECURITY.md](../SECURITY.md) for trust and isolation boundaries.
 
-## 中止与关闭
+## Cancellation and shutdown
 
-- MCP start 请求在会话准备期间被取消：撤销准入，释放新获得的 handle，不留下调用方不知道的 job。
-- start 返回 jobId 后：独立任务继续，需 copilot_cancel 显式取消。
-- 任务时限与启动握手时限分开，host 自己持有任务 deadline，避免超时竞态被迟到 end_turn 覆盖。
-- 取消请求后保留后端 canonical failure，不把清理失败伪装成成功取消。
-- 超出协作取消宽限期会尝试关闭相应连接；若清理无法完成，报告失败并对生命周期中记录的自有进程执行兜底终止。
-- 强制取消立即固定为 failed，并清除 host 任务 deadline；迟到的事件、结果或异常不能覆盖该终态。result 保留 cancellationError 与 cleanupErrors，调用本身仍会抛出清理错误。
-- 强制取消或整体 shutdown 时，只有 runtime.close 确认成功才移除对应会话；失败 handle 禁止新任务，可用 copilot_close_session 再试，整体 shutdown 也会再次尝试释放。failed 不表示资源已释放。
-- stdio EOF、协议关闭或 SIGINT/SIGTERM 都进入同一个幂等关闭流程。它尝试所有会话清理，并调用 runtime shutdown；失败不会返回成功退出码。
-- 不能撤销已完成写入/命令，不能保证捕获 Agent 自行脱离管理的后代进程。
+- If an MCP start request is cancelled while its session is being prepared, admission is revoked and any newly acquired handle is released, leaving no job unknown to the caller.
+- After start returns jobId, the independent task continues; use `copilot_cancel` to cancel it explicitly.
+- Task and startup handshake deadlines are separate. The host owns the task deadline so that a late `end_turn` cannot overwrite a timeout in a race.
+- Cancellation preserves the backend's canonical failure rather than disguising cleanup failure as successful cancellation.
+- Once the cooperative cancellation grace period expires, the bridge attempts to close the relevant connection. If cleanup cannot complete, it reports failure and attempts fallback termination of owned processes recorded during the lifecycle.
+- Forced cancellation immediately fixes the state as `failed` and clears the host task deadline. Late events, results, or exceptions cannot overwrite that terminal state. The result retains `cancellationError` and `cleanupErrors`; the call itself still throws the cleanup error.
+- On forced cancellation or overall shutdown, a session is removed only after `runtime.close` confirms success. A failed handle cannot accept new tasks; `copilot_close_session` can retry release, and overall shutdown also retries. `failed` does not mean that resources have been released.
+- stdio EOF, protocol closure, and SIGINT/SIGTERM all enter the same idempotent shutdown flow. It attempts cleanup of all sessions and calls runtime shutdown; failure does not produce a successful exit code.
+- Completed writes/commands cannot be undone, and descendants that detach from agent supervision are not guaranteed to be captured.
 
-## 资源与持久化
+## Resources and persistence
 
-默认最多四个会话，历史 job 最多六十四条，单 job 最多一百条输出事件、单 text_delta 最多八千字符。输出是有限窗口，**不是完整日志**。思考流不向主管返回。
+Defaults are at most four sessions, sixty-four historical jobs, one hundred output events per job, and eight thousand characters per `text_delta`. Output is a bounded window, **not a complete log**. Thinking streams are not returned to the supervisor.
 
-底层 session store 会写私有状态目录，可能包含任务或代码；审批 Promise 与 public job/session 映射只在进程内。即使状态文件仍存在，也没有跨进程恢复能力。close_session 释放连接后保留底层私有历史；用户自行决定何时安全清理状态目录。
+The underlying session store writes to a private state directory that may contain task content or code. Approval Promises and public job/session mappings exist only within the current process. There is no cross-process recovery even if the state files still exist. `close_session` releases the connection but retains the underlying private history; users decide when to safely clean the state directory.
 
-## 当前工具选择
+## Current tool selection
 
-真实 Copilot 以 `--acp --stdio --disable-builtin-mcps --no-custom-instructions` 启动，工具集合为 `view,create,edit,apply_patch,bash`。没有开放 Agent 嵌套委派、web_fetch 等能力。
+Real Copilot launches with `--acp --stdio --disable-builtin-mcps --no-custom-instructions`, with the tool set `view,create,edit,apply_patch,bash`. Agent nested delegation, `web_fetch`, and similar capabilities are not enabled.
 
-acpx 提供的客户端 fs 与 terminal callbacks 关闭。真实 Copilot 的 native file/native bash 已验证仍可经其自身执行路径运行并触发权限回调。此事实不意味着所有 native tools 必经同一回调。
+The client fs and terminal callbacks supplied by acpx are disabled. Real Copilot's native file/native bash tools have been verified to run through their own execution paths and trigger permission callbacks. This does not mean that every native tool necessarily uses the same callback.
 
-ACP 的 `mode: steer` 在该运行时里按队列处理，不能宣传成 GitHub Copilot SDK 的 immediate 中途注入。当前本仓库仅发送 prompt。
+ACP `mode: steer` is queued by this runtime; it must not be described as the GitHub Copilot SDK's immediate mid-turn injection. This repository currently sends only prompts.

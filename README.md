@@ -1,21 +1,23 @@
 # Claude–Copilot Supervisor
 
-本地 **Claude Code → MCP → acpx/runtime → GitHub Copilot CLI** 审批桥接。
+English | [简体中文](README.zh-CN.md)
 
-Claude 可以委派任务、在同一 Copilot 会话中继续讨论，查看 Copilot 的工具请求，批准一次或拒绝，再让执行端继续。不是把 Copilot 伪装成 Claude 的模型，也不需要公共服务或后台守护进程。
+A local approval bridge: **Claude Code → MCP → acpx/runtime → GitHub Copilot CLI**.
 
-> **实验性工具，不是安全沙箱。** 当前验证覆盖受限工具集的原生文件修改、命令审批与多轮上下文。尚未实现通用 `ask_user` / elicitation、跨进程恢复待审批请求或真正的中途 steering。详见 [安全边界](SECURITY.md) 和 [验证说明](docs/verification.md)。
+Claude can delegate tasks, continue the discussion in the same Copilot session, inspect Copilot's tool requests, approve once or deny, and let the executor continue. This does not disguise Copilot as a Claude model and requires neither a public service nor a background daemon.
 
-## 架构
+> **Experimental tool, not a security sandbox.** Current verification covers native file changes, command approvals, and multi-turn context with a restricted tool set. General-purpose `ask_user` / elicitation, cross-process recovery of pending approvals, and genuine mid-turn steering are not implemented. See the [security boundaries](SECURITY.md) and [verification notes](docs/verification.md).
+
+## Architecture
 
 ```text
 Claude Code
    │ stdio MCP: start / status / decide / cancel / close
    ▼
-本地 supervisor 进程
-   ├─ 持续会话、短等待状态查询
-   ├─ 挂起权限回调，精确选择 allow_once
-   ├─ 超时、取消、关闭及资源上限
+Local supervisor process
+   ├─ Persistent sessions and short-wait status queries
+   ├─ Suspended permission callbacks, exact allow_once selection
+   ├─ Timeouts, cancellation, shutdown, and resource limits
    ▼
 acpx/runtime (createAcpRuntime)
    │ ACP stdio
@@ -23,39 +25,43 @@ acpx/runtime (createAcpRuntime)
 GitHub Copilot CLI
 ```
 
-ACP 与 MCP 是不同协议；本仓库负责桥接。没有监听 TCP/HTTP 端口。它不是 GitHub、Anthropic 或 OpenClaw 的官方插件。
+ACP and MCP are different protocols; this repository bridges them. It does not listen on TCP/HTTP ports. It is not an official GitHub, Anthropic, or OpenClaw plugin.
 
-## 安装
+### Dependency credit
 
-前提：
+The embedded ACP runtime is provided by [acpx, maintained by OpenClaw](https://github.com/openclaw/acpx). This project is a new supervisor/MCP bridge built on that dependency, not an acpx fork or a rewrite of its underlying runtime. Dependency licenses remain with their respective projects.
 
-- Node.js **22.13+**、npm。
-- 真实使用时：`copilot` 和 `claude` 在同一执行环境的 PATH 中，且分别完成登录。
-- 不需要安装全局 acpx；锁定版本由本项目本地依赖提供。
+## Installation
 
-进入本仓库后：
+Prerequisites:
+
+- Node.js **22.13+** and npm.
+- For real use: `copilot` and `claude` on PATH in the same execution environment, each already authenticated.
+- A global acpx installation is not required; the project's local dependency supplies the pinned version.
+
+From this repository:
 
 ```bash
 npm ci --ignore-scripts --no-fund --no-audit
 npm run check
 ```
 
-`npm run check` 执行语法检查和不调用模型的测试。测试通过内置 ACP fixture 和故障注入验证机制，不读取个人项目、不需要任何模型账号。临时文件使用 Node 的系统临时目录解析，支持 `TMPDIR` / `TMP` / `TEMP`。
+`npm run check` performs syntax checks and tests that do not call models. Tests exercise the mechanisms using an included ACP fixture and fault injection; they do not read personal projects or require model accounts. Temporary files use Node's system temporary-directory resolution, including support for `TMPDIR` / `TMP` / `TEMP`.
 
-如果尚未安装 Copilot，按 [官方安装文档](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli) 安装，再在自己的终端执行登录：
+If Copilot is not installed, follow the [official installation instructions](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli), then authenticate in your own terminal:
 
 ```bash
 npm install -g @github/copilot
 copilot login --device-code
 ```
 
-不要把密码、令牌或设备码填进本仓库、MCP JSON 或提示词。凭据库不可用时，CLI 可能回退到明文保存令牌；登录前按自己的安全要求检查官方 CLI 的存储方式。
+Do not put passwords, tokens, or device codes in this repository, MCP JSON, or prompts. If a credential store is unavailable, the CLI may fall back to storing tokens in plaintext; review the official CLI's storage behavior against your own security requirements before logging in.
 
-## 接入 Claude Code
+## Connect to Claude Code
 
-先建立一个**没有秘密或生产数据**的测试工程。复制 `examples/mcp.example.json` 为自己的本地配置（建议命名 `mcp.local.json`，已被 gitignore 排除），替换其中所有绝对路径。
+First create a test project **without secrets or production data**. Copy `examples/mcp.example.json` to your own local configuration (the suggested name `mcp.local.json` is gitignored), and replace every absolute path.
 
-真实 Copilot 的配置形状：
+Configuration shape for real Copilot:
 
 ```json
 {
@@ -73,77 +79,77 @@ copilot login --device-code
 }
 ```
 
-然后在 Claude Code 中**临时加载**，无需写入全局设置：
+Then **load it temporarily** in Claude Code without writing global settings:
 
 ```bash
 claude --strict-mcp-config --mcp-config /absolute/path/to/mcp.local.json
 ```
 
-`--strict-mcp-config` 会让该次 Claude 会话只加载显式配置的 MCP；它不会改动其他会话的设置。不要直接给整个服务器、主目录或含密钥工程授权。
+`--strict-mcp-config` makes that Claude session load only the explicitly configured MCP servers; it does not change other sessions' settings. Do not authorize an entire server, home directory, or project containing keys.
 
-建议给主管的指令：
+Suggested supervisor instructions:
 
 ```text
-使用 copilot-supervisor 的工具完成我明确指定的任务。
-启动后用 copilot_status(waitMs=10000) 查询状态，不高频空轮询。
-遇到 waiting_approval，检查精确路径、diff 或完整命令。
-只在我授权的工程与任务范围内批准一次；不允许扩大权限。
-拒绝 sudo、凭据读取、对外发布、部署和无关路径操作，并向我说明。
-完成后核验实际结果，最后关闭会话。
+Use the copilot-supervisor tools only for the task I explicitly specify.
+After starting, query with copilot_status(waitMs=10000); do not busy-poll.
+On waiting_approval, inspect the exact paths, diff, or complete command.
+Approve once only within the project and task scope I authorized; do not expand permissions.
+Deny sudo, credential access, external publication, deployment, and unrelated paths, and explain why.
+Verify the actual result when finished, then close the session.
 ```
 
-这些提示是主管的行为约束，**不是执行层强制策略**。不要将模型判断作为唯一安全边界。
+These prompts constrain the supervisor's behavior; they are **not enforcement policies at the execution layer**. Do not use model judgment as your only security boundary.
 
-### 不使用真实模型的演示
+### Demo without real models
 
-在上述配置的 `args` 末尾加入 `--fixture`，即切换到仓库内确定性测试 Agent；这时 prompt 不是自然语言，而是合成测试 JSON，例如：
+Append `--fixture` to the configuration's `args` to use the repository's deterministic test agent. In this mode, the prompt is synthetic test JSON, not natural language, for example:
 
 ```json
 {"action":"write","file":"probe.txt","content":"approved test"}
 ```
 
-fixture **不是 Copilot**，不调用模型；移除 `--fixture` 才会运行真实 Copilot。不得混淆两者的测试结论。
+The fixture **is not Copilot** and does not call a model. Remove `--fixture` to run real Copilot. Do not conflate the two kinds of test evidence.
 
-## MCP 工具
+## MCP tools
 
-| 工具 | 输入 | 行为 |
+| Tool | Input | Behavior |
 |---|---|---|
-| `copilot_start` | `prompt`，可选 `sessionId` | 创建任务或在原会话发下一轮消息，返回 `jobId` 和 `sessionId`；只等待会话准备，不等待任务结束 |
-| `copilot_status` | `jobId`，可选 `waitMs`（0–10000） | 查看状态、有限长度输出和原始待审批请求；有审批/终态立即返回 |
-| `copilot_decide` | `jobId`, `approvalId`, `decision` | `approve` 精确选择已提供的 `allow_once`；`deny` 选择一次拒绝或取消 |
-| `copilot_cancel` | `jobId` | 撤销待审批并取消当前轮次；不能撤销已经产生的副作用 |
-| `copilot_close_session` | `sessionId` | 释放会话及连接；日常工作结束时显式调用 |
+| `copilot_start` | `prompt`, optional `sessionId` | Creates a task or sends the next message in an existing session; returns `jobId` and `sessionId`, waiting only for session preparation, not task completion |
+| `copilot_status` | `jobId`, optional `waitMs` (0–10000) | Returns status, bounded output, and the raw pending approval request; returns immediately on an approval request or terminal state |
+| `copilot_decide` | `jobId`, `approvalId`, `decision` | `approve` selects exactly the offered `allow_once`; `deny` selects a one-time rejection or cancels the request |
+| `copilot_cancel` | `jobId` | Revokes pending approvals and cancels the current turn; cannot undo side effects that have already occurred |
+| `copilot_close_session` | `sessionId` | Releases the session and connection; call explicitly when work is finished |
 
-典型流程：
+Typical flow:
 
 ```text
-start → status → waiting_approval → 检查请求 → decide → status → 完成
-                    ↑                                 │
-                    └──────── 如有下一次操作 ───────────┘
+start → status → waiting_approval → inspect request → decide → status → finished
+                    ↑                                          │
+                    └──────── if another operation follows ────┘
 ```
 
-- 不存在 `allow_once` 时不偷偷改用 `allow_always`。
-- 过期、跨 job、重复使用的 approvalId 会被拒绝。
-- `completed` 仅表示 Agent 轮次结束，**不等于任务成功**；拒绝操作后也可能正常 `end_turn`。
-- 只有进程内续聊；本原型不恢复进程重启前的 public sessionId 或挂起 Promise。
+- If `allow_once` is absent, the bridge does not silently substitute `allow_always`.
+- Expired, cross-job, and reused approval IDs are rejected.
+- `completed` means only that the agent's turn ended, **not that the task succeeded**; a denied operation may still end normally with `end_turn`.
+- Session continuation works only within the current process. This prototype does not recover public session IDs or pending Promises after a process restart.
 
-详细协议和生命周期见 [docs/protocol.md](docs/protocol.md)。
+See [docs/protocol.md](docs/protocol.md) for the detailed protocol and lifecycle.
 
-## 运行与限制
+## Operation and limits
 
 ```bash
 npm start -- --project-root /absolute/path/to/test-project --state-dir /absolute/path/to/private-state
 ```
 
-该入口的 stdout 仅供 MCP JSON-RPC 使用，不是交互 TUI。不要向 stdout 写调试日志。
+This entry point's stdout is reserved for MCP JSON-RPC; it is not an interactive TUI. Do not write debug logs to stdout.
 
-默认配置：审批期限 60 秒；任务时限 5 分钟；启动握手预算 10 秒；取消宽限期 3 秒；最多 4 个会话、保留 64 条 job。状态目录可能含任务或代码，必须私有保存，不能提交。默认状态位于仓库 `.state/`；可用 `--state-dir` 显式指定。
+Defaults: 60-second approval lifetime; 5-minute task deadline; 10-second startup handshake budget; 3-second cancellation grace period; at most 4 sessions and 64 retained jobs. The state directory may contain task content or code, must remain private, and must not be committed. The default is the repository's `.state/`; set `--state-dir` explicitly to use another directory.
 
-当前 Copilot 启动参数关闭内置 GitHub MCP 和自定义指令，只开放 `view,create,edit,apply_patch,bash`。acpx 客户端的 fs/terminal 回调关闭，Copilot 原生工具走自己的执行路径；这不是完整日常开发工具集，也不是 OS 隔离。
+The current Copilot launch arguments disable built-in GitHub MCP servers and custom instructions, exposing only `view,create,edit,apply_patch,bash`. The acpx client's fs/terminal callbacks are disabled; Copilot's native tools use their own execution path. This is neither a full everyday development tool set nor OS isolation.
 
-测试主要在 Linux/Node 22 运行。不要把临时目录可移植性当成 Windows 端到端兼容保证；特别是 opt-in live 脚本的进程组退出逻辑尚未在 Windows 验证。
+Tests have primarily run on Linux/Node 22. Portable temporary-directory handling is not a guarantee of Windows end-to-end compatibility; in particular, process-group termination in the opt-in live scripts has not been verified on Windows.
 
-## 真实模型联调（显式选择，会使用用量）
+## Real-model integration tests (explicit opt-in; consumes usage)
 
 ```bash
 npm run test:live:copilot-files
@@ -151,18 +157,22 @@ npm run test:live:copilot-commands
 npm run test:live:claude-copilot
 ```
 
-以上分别测试真实 Copilot 原生文件权限、精确命令权限，以及真实 Claude 审批真实 Copilot。它们在新的临时测试目录工作，保留私有报告，不把真实运行日志提交到 Git。
+These respectively test real Copilot's native file permissions, exact command permissions, and real Claude approving real Copilot. They work in fresh temporary test directories, retain private reports, and do not commit real execution logs to Git.
 
-另有 `npm run test:live:claude-fixture`：只有主管是实际 Claude，执行端仍是 fixture。真实使用模型与普通回归严格分开。
+There is also `npm run test:live:claude-fixture`: only the supervisor is real Claude; the executor is still the fixture. Real-model use is kept separate from ordinary regression tests.
 
-## 项目结构
+## Project layout
 
 ```text
-src/                 审批队列、会话主管、stdio MCP 入口
-scripts/             质量检查、显式 opt-in 模型联调、证据解析器
-test/                离线回归与确定性 ACP fixture
-examples/            不含凭据的通用 MCP 配置样例
-docs/                协议和去标识验证摘要
+src/                 Approval queue, session supervisor, stdio MCP entry point
+scripts/             Quality checks, opt-in model integration tests, evidence parsers
+test/                Offline regressions and deterministic ACP fixture
+examples/            Generic MCP configuration example without credentials
+docs/                Protocol and de-identified verification summary
 ```
 
-本仓库只包含实现、测试与去标识文档；不包含登录态、个人配置、原始对话、真实运行 ID、机器路径或测试日志。依赖许可证归各自项目；本项目当前为私有实验，未授予额外开源许可，也不发布到 npm。
+## Privacy, publication, and license
+
+This repository contains only implementation, tests, and de-identified documentation—not authentication state, personal configuration, raw conversations, real execution IDs, machine-specific paths, or test logs. The repository is currently private; making it public requires a separate, explicit decision by the owner. Source visibility and licensing are separate decisions.
+
+This project is licensed under the [MIT License](LICENSE). Copyright (c) claude-copilot-supervisor contributors. Dependencies retain their respective licenses. This project is not published to npm.

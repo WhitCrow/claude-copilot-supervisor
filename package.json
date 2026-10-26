@@ -2,7 +2,7 @@
   "name": "claude-copilot-supervisor",
   "version": "0.1.0",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "description": "Local stdio MCP bridge for persistent Copilot sessions and one-time supervisor approvals",
   "scripts": {
